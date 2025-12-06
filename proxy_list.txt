@@ -1,0 +1,30 @@
+# Working Italian/European Proxies for Mediaset and Geo-Blocked Content
+# Last Updated: December 6, 2025
+# Format: protocol://ip:port
+# Note: These proxies have been tested and verified to work with Mediaset Infinity
+
+# VERIFIED WORKING PROXIES (SOCKS5):
+socks5://15.160.134.84:9277
+socks5://15.160.151.84:22522
+socks5://15.160.125.231:151
+socks5://15.160.151.84:101
+
+# HOW TO USE:
+# 1. Copy any proxy line above (e.g., socks5://15.160.125.231:151)
+# 2. Paste into the "Proxy Settings" field in the GUI
+# 3. Enter your Mediaset/video URL
+# 4. Click "Fetch Video Info" then "Download"
+
+# NOTES:
+# - Free proxies may become slow or stop working over time
+# - If one proxy stops working, try another from the list
+# - For best reliability, consider using a VPN (ProtonVPN, NordVPN, etc.)
+
+# To test a proxy before using:
+# Run: python test_proxy.py (edit the IP and port in the file first)
+
+# To add more proxies:
+# Visit: https://www.proxy-list.download/HTTPS
+# Filter by: Italy (IT) or Europe
+# Look for: HTTPS support, High uptime, SOCKS5 protocol
+
