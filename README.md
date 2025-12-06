@@ -2,9 +2,10 @@
 
 A powerful Python-based video downloader with a beautiful GUI that supports YouTube, Mediaset, and 1000+ other video platforms. Features include age-restricted video support, YouTube search, proxy settings, and more.
 
-<img width="690" height="621" alt="youtubevideodl" src="https://github.com/user-attachments/assets/38c7d908-f7d2-4a6e-8d07-083fbac46ac9" />
+![595779789_122219585120282266_737259593260320858_n](https://github.com/user-attachments/assets/a7e1db54-b4fa-4e38-962e-c8e32fd67401)
+![595668606_122219585456282266_4912662710787257956_n](https://github.com/user-attachments/assets/2e09ac55-ccf5-464b-863f-68e5080a9243)
+![595530807_122219585564282266_7116373872136098384_n](https://github.com/user-attachments/assets/ff12e8af-fa4f-4bba-ae64-bdf59b1af4cc)
 
-<img width="692" height="622" alt="youtubevideodl1" src="https://github.com/user-attachments/assets/b70dbe9b-70a5-4ba7-a887-0c07288efaf1" />
 
 ## ✨ Features
 
@@ -253,6 +254,7 @@ This tool is for educational purposes only. Please respect:
 MIT License - Feel free to use and modify as needed.
 
 **Author:** Roberto Raimondo - IS Senior Systems Engineer II
+
 
 
 
