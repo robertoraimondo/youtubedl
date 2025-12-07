@@ -12,6 +12,9 @@ import webbrowser
 import shutil
 import yt_dlp
 from pathlib import Path
+import traceback
+import urllib.request
+import io
 
 
 class YouTubeDownloader:
@@ -250,13 +253,31 @@ class YouTubeDownloader:
                 videos = []
                 for entry in result.get('entries', []):
                     if entry:
+                        # Extract video ID from URL or id field
+                        video_id = entry.get('id', '')
+                        video_url = entry.get('url', '')
+                        
+                        # Get thumbnail - try multiple sources
+                        thumbnail = entry.get('thumbnail', '')
+                        
+                        # If no thumbnail but we have video ID, construct YouTube thumbnail URL
+                        if not thumbnail and video_id:
+                            thumbnail = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+                        
+                        # If we have thumbnails array, get the best one
+                        thumbnails = entry.get('thumbnails', [])
+                        if thumbnails and isinstance(thumbnails, list):
+                            # Get the last (usually highest quality) thumbnail
+                            thumbnail = thumbnails[-1].get('url', thumbnail)
+                        
                         videos.append({
                             'title': entry.get('title', 'Unknown'),
-                            'url': entry.get('url', ''),
+                            'url': video_url,
+                            'id': video_id,
                             'duration': entry.get('duration', 0),
                             'views': entry.get('view_count', 0),
                             'channel': entry.get('uploader', 'Unknown'),
-                            'thumbnail': entry.get('thumbnail', '')
+                            'thumbnail': thumbnail
                         })
                 
                 return {
@@ -290,6 +311,12 @@ class YouTubeDownloaderGUI:
         
         self.create_widgets()
         self.check_cookies()
+        
+        # Check VLC installation
+        vlc_installed, vlc_path = self.check_vlc_installed()
+        if not vlc_installed:
+            # Show VLC download prompt after GUI is ready
+            self.root.after(1000, self.show_vlc_download_prompt)
         
     def create_widgets(self):
         """Create all GUI widgets."""
@@ -956,43 +983,251 @@ class YouTubeDownloaderGUI:
             vlc_instance = None
             temp_video_file = None
             
-            # Show thumbnail as preview (VLC streaming doesn't work due to YouTube bot detection)
-            print("DEBUG: Showing thumbnail preview")
-            self._show_thumbnail_in_frame(video, player_frame)
+            # Try to download preview clip for VLC playback
+            print("DEBUG: Attempting preview clip download for VLC playback")
+            vlc_success = False
+            
+            # Show downloading progress message
+            download_label = tk.Label(
+                player_frame,
+                text="⏳ Downloading 30-second preview...\nPlease wait, this may take a moment.",
+                font=("Arial", 12, "bold"),
+                bg="black",
+                fg="yellow",
+                justify=tk.CENTER
+            )
+            download_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            player_frame.update()
+            
+            try:
+                import vlc
+                import tempfile
+                
+                # Create temp directory for preview
+                temp_dir = tempfile.gettempdir()
+                temp_video_file = os.path.join(temp_dir, f"yt_preview_{video.get('id', 'temp')}.mp4")
+                
+                print(f"DEBUG: Downloading 30-second preview to: {temp_video_file}")
+                
+                # Download first 30 seconds as preview
+                ydl_opts = {
+                    'format': 'best[height<=480]',  # Lower quality for faster preview
+                    'quiet': False,
+                    'no_warnings': False,
+                    'outtmpl': temp_video_file,
+                    'external_downloader': 'ffmpeg',
+                    'external_downloader_args': ['-t', '30'],  # Download only 30 seconds
+                }
+                
+                # Add cookies if available
+                cookies_file = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+                if os.path.exists(cookies_file):
+                    ydl_opts['cookiefile'] = cookies_file
+                    print(f"DEBUG: Using cookies file: {cookies_file}")
+                
+                # Update progress message
+                download_label.config(text="⏳ Processing preview...\nAlmost ready!")
+                player_frame.update()
+                
+                # Try to download preview clip
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    print("DEBUG: Starting preview download...")
+                    ydl.download([video['url']])
+                    
+                # Check if file was created
+                if os.path.exists(temp_video_file) and os.path.getsize(temp_video_file) > 0:
+                    print(f"DEBUG: Preview file downloaded successfully: {os.path.getsize(temp_video_file)} bytes")
+                    
+                    # Remove download progress label
+                    download_label.destroy()
+                    
+                    # Create VLC instance and player
+                    vlc_instance = vlc.Instance('--no-xlib')
+                    vlc_player = vlc_instance.media_player_new()
+                    
+                    # Store references to prevent garbage collection
+                    preview_content.vlc_instance = vlc_instance
+                    preview_content.vlc_player = vlc_player
+                    
+                    # Create media from file
+                    media = vlc_instance.media_new(temp_video_file)
+                    vlc_player.set_media(media)
+                    
+                    # Embed VLC in tkinter frame
+                    if sys.platform.startswith('win'):
+                        vlc_player.set_hwnd(player_frame.winfo_id())
+                    else:
+                        vlc_player.set_xwindow(player_frame.winfo_id())
+                    
+                    vlc_success = True
+                    print("DEBUG: VLC player initialized with preview clip successfully")
+                else:
+                    print("DEBUG: Preview file not created or empty")
+                    download_label.destroy()
+                    vlc_success = False
+                    
+            except Exception as e:
+                print(f"DEBUG: Preview clip download failed: {e}")
+                traceback.print_exc()
+                # Remove download progress label on error
+                try:
+                    download_label.destroy()
+                except:
+                    pass
+                vlc_success = False
+                # Clean up failed download
+                if temp_video_file and os.path.exists(temp_video_file):
+                    try:
+                        os.remove(temp_video_file)
+                    except:
+                        pass
+            
+            # If VLC failed, show thumbnail
+            if not vlc_success:
+                print("DEBUG: Falling back to thumbnail preview")
+                self._show_thumbnail_in_frame(video, player_frame)
             
             # Add status label
-            status_label = tk.Label(
-                preview_content,
-                text="💡 To watch the full video, click 'Play in Browser' or download it",
-                font=("Arial", 9, "italic"),
-                bg="#f5f5f5",
-                fg="#FF6600",
-                pady=5
-            )
+            if vlc_success:
+                status_label = tk.Label(
+                    preview_content,
+                    text="🎬 30-second preview loaded! Click Play to watch",
+                    font=("Arial", 9, "italic"),
+                    bg="#f5f5f5",
+                    fg="#4CAF50",
+                    pady=5
+                )
+            else:
+                status_label = tk.Label(
+                    preview_content,
+                    text="⚠️ Preview download unavailable. Showing thumbnail (you can still download full video).",
+                    font=("Arial", 9, "italic"),
+                    bg="#f5f5f5",
+                    fg="#FF6600",
+                    pady=5
+                )
             status_label.pack()
+            
+            # DEBUG: Print button creation status
+            print(f"DEBUG: VLC Success Status = {vlc_success}")
+            print(f"DEBUG: Creating control buttons...")
             
             # Control buttons frame (ALWAYS show)
             controls_frame = tk.Frame(preview_content, bg="#f5f5f5")
             controls_frame.pack(fill=tk.X, pady=10)
             
-            # Play in Browser button (main action since streaming doesn't work)
+            # Play button (works for both VLC and non-VLC)
+            def play_video():
+                if vlc_success and hasattr(preview_content, 'vlc_player'):
+                    preview_content.vlc_player.play()
+                    print("DEBUG: Playing video with VLC")
+                else:
+                    # Open in browser if VLC not available
+                    webbrowser.open(video['url'])
+                    print("DEBUG: Opening in browser (VLC not available)")
+            
+            play_btn = tk.Button(
+                controls_frame,
+                text="▶ Play",
+                command=play_video,
+                font=("Arial", 10, "bold"),
+                bg="#4CAF50",
+                fg="white",
+                cursor="hand2",
+                padx=15,
+                pady=5
+            )
+            play_btn.pack(side=tk.LEFT, padx=2)
+            print("DEBUG: Play button created")
+            
+            # Pause button (only functional with VLC)
+            def pause_video():
+                if vlc_success and hasattr(preview_content, 'vlc_player'):
+                    preview_content.vlc_player.pause()
+                    print("DEBUG: Paused video")
+                else:
+                    messagebox.showinfo("VLC Not Available", "Pause control requires VLC player.\n\nFor YouTube videos, use the browser player controls.")
+            
+            pause_btn = tk.Button(
+                controls_frame,
+                text="⏸ Pause",
+                command=pause_video,
+                font=("Arial", 10, "bold"),
+                bg="#FF9800" if vlc_success else "#CCCCCC",
+                fg="white",
+                cursor="hand2" if vlc_success else "arrow",
+                padx=15,
+                pady=5,
+                state=tk.NORMAL if vlc_success else tk.DISABLED
+            )
+            pause_btn.pack(side=tk.LEFT, padx=2)
+            print("DEBUG: Pause button created")
+            
+            # Stop button (only functional with VLC)
+            def stop_video():
+                if vlc_success and hasattr(preview_content, 'vlc_player'):
+                    preview_content.vlc_player.stop()
+                    print("DEBUG: Stopped video")
+                else:
+                    messagebox.showinfo("VLC Not Available", "Stop control requires VLC player.\n\nFor YouTube videos, use the browser player controls.")
+            
+            stop_btn = tk.Button(
+                controls_frame,
+                text="⏹ Stop",
+                command=stop_video,
+                font=("Arial", 10, "bold"),
+                bg="#f44336" if vlc_success else "#CCCCCC",
+                fg="white",
+                cursor="hand2" if vlc_success else "arrow",
+                padx=15,
+                pady=5,
+                state=tk.NORMAL if vlc_success else tk.DISABLED
+            )
+            stop_btn.pack(side=tk.LEFT, padx=2)
+            print("DEBUG: Stop button created")
+            
+            # Volume control (only functional with VLC)
+            if vlc_success:
+                volume_frame = tk.Frame(controls_frame, bg="#f5f5f5")
+                volume_frame.pack(side=tk.LEFT, padx=10)
+                
+                tk.Label(volume_frame, text="🔊", bg="#f5f5f5", font=("Arial", 10)).pack(side=tk.LEFT)
+                
+                def set_volume(val):
+                    if hasattr(preview_content, 'vlc_player'):
+                        preview_content.vlc_player.audio_set_volume(int(float(val)))
+                
+                volume_slider = tk.Scale(
+                    volume_frame,
+                    from_=0,
+                    to=100,
+                    orient=tk.HORIZONTAL,
+                    command=set_volume,
+                    length=100,
+                    showvalue=False
+                )
+                volume_slider.set(80)
+                volume_slider.pack(side=tk.LEFT)
+                print("DEBUG: Volume slider created")
+            
+            # Open in Browser button (always available as fallback)
             def play_in_browser():
-                import webbrowser
                 webbrowser.open(video['url'])
                 print("DEBUG: Opened video in browser")
             
             play_browser_btn = tk.Button(
                 controls_frame,
-                text="▶ Play in Browser",
+                text="🌐 Open in Browser",
                 command=play_in_browser,
-                font=("Arial", 11, "bold"),
-                bg="#FF0000",
+                font=("Arial", 10, "bold"),
+                bg="#2196F3",
                 fg="white",
                 cursor="hand2",
-                padx=20,
-                pady=8
+                padx=15,
+                pady=5
             )
-            play_browser_btn.pack(side=tk.LEFT, padx=5)
+            play_browser_btn.pack(side=tk.LEFT, padx=2)
+            print("DEBUG: Open in Browser button created")
             
             # Close button
             def close_preview():
@@ -1001,7 +1236,7 @@ class YouTubeDownloaderGUI:
                     vlc_player.release()
                 if vlc_instance:
                     vlc_instance.release()
-                # Clean up temp file if exists
+                # Clean up temporary file if exists
                 if temp_video_file and os.path.exists(temp_video_file):
                     try:
                         os.remove(temp_video_file)
@@ -1021,6 +1256,8 @@ class YouTubeDownloaderGUI:
                 pady=5
             )
             close_btn.pack(side=tk.RIGHT, padx=5)
+            print("DEBUG: Close button created")
+            print("DEBUG: All buttons created successfully!")
             
             # Video information below controls
             info_section = tk.Frame(preview_content, bg="#f5f5f5")
@@ -1172,50 +1409,143 @@ class YouTubeDownloaderGUI:
     
     def _show_thumbnail_in_frame(self, video, player_frame):
         """Show thumbnail in the player frame when VLC fails."""
-        if video.get('thumbnail'):
+        print(f"DEBUG: _show_thumbnail_in_frame called")
+        print(f"DEBUG: Video data: {video}")
+        
+        # Show loading message first
+        loading_label = tk.Label(
+            player_frame,
+            text="⏳ Loading preview...",
+            font=("Arial", 12),
+            bg="black",
+            fg="white"
+        )
+        loading_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        player_frame.update()
+        
+        thumbnail_url = video.get('thumbnail', '').strip()
+        video_id = video.get('id', '').strip()
+        print(f"DEBUG: Thumbnail URL: {thumbnail_url}")
+        print(f"DEBUG: Video ID: {video_id}")
+        
+        # If no thumbnail URL but we have video ID, construct one
+        if not thumbnail_url and video_id:
+            thumbnail_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+            print(f"DEBUG: Constructed thumbnail URL from video ID: {thumbnail_url}")
+        
+        if thumbnail_url:
             try:
-                import urllib.request
                 from PIL import Image, ImageTk
-                import io
                 
-                print(f"DEBUG: Loading thumbnail from: {video['thumbnail']}")
-                # Download thumbnail
-                with urllib.request.urlopen(video['thumbnail'], timeout=5) as url:
-                    image_data = url.read()
+                print(f"DEBUG: Loading thumbnail from: {thumbnail_url}")
+                
+                # Try to get the highest quality thumbnail
+                # For YouTube, try to get maxresdefault (1280x720) or hq720
+                if 'youtube.com' in thumbnail_url or 'ytimg.com' in thumbnail_url:
+                    video_id = video.get('id', '')
+                    print(f"DEBUG: YouTube video ID: {video_id}")
+                    
+                    if video_id:
+                        # Try different quality options in order
+                        quality_options = [
+                            f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg",
+                            f"https://i.ytimg.com/vi/{video_id}/hq720.jpg",
+                            f"https://i.ytimg.com/vi/{video_id}/sddefault.jpg",
+                            f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                            thumbnail_url  # fallback to original
+                        ]
+                        
+                        # Try each quality until one works
+                        image_data = None
+                        for url in quality_options:
+                            try:
+                                print(f"DEBUG: Trying thumbnail URL: {url}")
+                                with urllib.request.urlopen(url, timeout=5) as response:
+                                    image_data = response.read()
+                                    thumbnail_url = url
+                                    print(f"DEBUG: Successfully loaded from: {url}")
+                                    break
+                            except Exception as e:
+                                print(f"DEBUG: Failed to load {url}: {e}")
+                                continue
+                        
+                        if not image_data:
+                            raise Exception("Could not load any thumbnail quality")
+                    else:
+                        # No video ID, use original thumbnail
+                        print(f"DEBUG: No video ID, using original thumbnail")
+                        with urllib.request.urlopen(thumbnail_url, timeout=5) as response:
+                            image_data = response.read()
+                else:
+                    # Not YouTube, use original thumbnail
+                    print(f"DEBUG: Not YouTube, using original thumbnail")
+                    with urllib.request.urlopen(thumbnail_url, timeout=5) as response:
+                        image_data = response.read()
                 
                 # Open and resize image
                 image = Image.open(io.BytesIO(image_data))
-                # Resize to fit player frame (560x315)
-                image.thumbnail((560, 315), Image.Resampling.LANCZOS)
+                print(f"DEBUG: Image loaded, size: {image.size}")
+                
+                # Calculate size to fit in 560x315 frame while maintaining aspect ratio
+                frame_width, frame_height = 560, 315
+                img_width, img_height = image.size
+                
+                # Calculate scaling factor
+                scale = min(frame_width / img_width, frame_height / img_height)
+                new_width = int(img_width * scale)
+                new_height = int(img_height * scale)
+                
+                # Resize image
+                image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                print(f"DEBUG: Image resized to: {new_width}x{new_height}")
                 
                 # Convert to PhotoImage
                 photo = ImageTk.PhotoImage(image)
+                
+                # Remove loading message
+                loading_label.destroy()
                 
                 # Display thumbnail
                 thumbnail_label = tk.Label(player_frame, image=photo, bg="black")
                 thumbnail_label.image = photo  # Keep a reference!
                 thumbnail_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
                 
-                print("DEBUG: Thumbnail loaded successfully")
+                print("DEBUG: Thumbnail displayed successfully")
+                
             except Exception as e:
                 print(f"DEBUG: Error loading thumbnail: {e}")
+                traceback.print_exc()
+                
+                # Remove loading message and show error
+                try:
+                    loading_label.destroy()
+                except:
+                    pass
+                
                 # Show error message in frame
                 error_label = tk.Label(
                     player_frame,
-                    text="⚠️ Preview not available\nClick Play to open in browser",
-                    font=("Arial", 12),
+                    text="⚠️ Thumbnail preview not available\n\nYou can still:\n• Play in Browser\n• Download the video",
+                    font=("Arial", 11),
                     bg="black",
-                    fg="white"
+                    fg="white",
+                    justify=tk.CENTER
                 )
                 error_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
         else:
             # No thumbnail available
+            print("DEBUG: No thumbnail URL provided")
+            try:
+                loading_label.destroy()
+            except:
+                pass
             no_thumb_label = tk.Label(
                 player_frame,
-                text="📹 No preview available\nClick Play to open in browser",
-                font=("Arial", 12),
+                text="📹 No thumbnail available\n\nYou can still:\n• Play in Browser\n• Download the video",
+                font=("Arial", 11),
                 bg="black",
-                fg="white"
+                fg="white",
+                justify=tk.CENTER
             )
             no_thumb_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
     
@@ -1726,6 +2056,55 @@ class YouTubeDownloaderGUI:
             )
         except Exception as e:
             messagebox.showerror("Error", f"Could not open browser:\n{e}\n\nPlease copy this URL manually:\n{url}")
+    
+    def check_vlc_installed(self):
+        """Check if VLC is installed on the system."""
+        try:
+            # Check if VLC is installed via registry (Windows)
+            if sys.platform.startswith('win'):
+                import winreg
+                try:
+                    # Check 64-bit registry
+                    key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\VideoLAN\VLC")
+                    install_dir = winreg.QueryValueEx(key, "InstallDir")[0]
+                    winreg.CloseKey(key)
+                    return True, install_dir
+                except:
+                    try:
+                        # Check 32-bit registry on 64-bit system
+                        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\VideoLAN\VLC")
+                        install_dir = winreg.QueryValueEx(key, "InstallDir")[0]
+                        winreg.CloseKey(key)
+                        return True, install_dir
+                    except:
+                        pass
+            
+            # Try importing python-vlc module
+            import vlc
+            return True, "VLC module found"
+        except:
+            return False, None
+    
+    def show_vlc_download_prompt(self):
+        """Show prompt to download VLC if not installed."""
+        result = messagebox.askyesno(
+            "VLC Not Found",
+            "VLC Media Player is not installed on your system.\n\n"
+            "VLC is required for in-app video preview features.\n\n"
+            "Would you like to download VLC now?\n\n"
+            "(The download page will open in your browser)"
+        )
+        
+        if result:
+            webbrowser.open("https://www.videolan.org/vlc/download-windows.html")
+            messagebox.showinfo(
+                "VLC Download",
+                "After installing VLC:\n\n"
+                "1. Install VLC Media Player\n"
+                "2. Install python-vlc: pip install python-vlc\n"
+                "3. Restart this application\n\n"
+                "Video preview features will then be available!"
+            )
     
     def check_cookies(self):
         """Check if cookies.txt exists."""
