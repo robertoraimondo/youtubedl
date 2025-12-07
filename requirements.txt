@@ -1,2 +1,5 @@
 yt-dlp>=2023.12.30
 ffmpeg-python>=0.2.0
+Pillow>=10.0.0
+tkinterweb>=3.0.0
+python-vlc>=3.0.0

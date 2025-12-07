@@ -1,18 +1,17 @@
 # YouTube Video Downloader with GUI
 
-A powerful Python-based video downloader with a beautiful GUI that supports YouTube, Mediaset, and 1000+ other video platforms. Features include age-restricted video support, YouTube search, proxy settings, and more.
+A powerful Python-based video downloader with a beautiful GUI that supports YouTube, Mediaset, and 1000+ other video platforms. Features include YouTube search with thumbnail preview, real-time download progress, age-restricted video support, proxy settings, and more.
 
-![595779789_122219585120282266_737259593260320858_n](https://github.com/user-attachments/assets/a7e1db54-b4fa-4e38-962e-c8e32fd67401)
-![595668606_122219585456282266_4912662710787257956_n](https://github.com/user-attachments/assets/2e09ac55-ccf5-464b-863f-68e5080a9243)
-![595530807_122219585564282266_7116373872136098384_n](https://github.com/user-attachments/assets/ff12e8af-fa4f-4bba-ae64-bdf59b1af4cc)
-
+**Author:** Roberto Raimondo - IS Senior Systems Engineer II
 
 ## ✨ Features
 
 ### Core Features
 - 📹 **Download videos in best quality** (automatic selection)
 - 🎵 **Extract audio only** (MP3 format)
-- 🔍 **YouTube search** directly in the app
+- 🔍 **YouTube search** with 50+ results and thumbnail previews
+- 👁️ **Video preview panel** - view thumbnails before downloading
+- 📊 **Real-time download progress** - percentage, speed (MB/s), and ETA
 - 🍪 **Age-restricted video support** using browser cookies
 - 🌍 **Proxy support** for geo-blocked content
 - 📁 **Flexible download location** (choose per download)
@@ -20,9 +19,12 @@ A powerful Python-based video downloader with a beautiful GUI that supports YouT
 
 ### GUI Features
 - 🎨 Beautiful, modern interface with YouTube red theme (opens maximized)
+- 🖼️ **Two-panel search results** - list view + preview panel
+- 📺 **Thumbnail preview** - see video image before downloading
+- ▶️ **Play in Browser** button for quick video watching
 - 📊 Real-time video information display
 - 🔘 Smart single-button interface (Fetch → Download)
-- ⚡ Progress bar with status updates
+- ⚡ Advanced progress tracking with speed and time remaining
 - 🍪 Cookie setup wizard with browser extension links
 - 🌐 Proxy manager with saved proxy list
 - 📋 Load saved proxies feature
@@ -38,7 +40,13 @@ A powerful Python-based video downloader with a beautiful GUI that supports YouT
 
 ## 🚀 Quick Start
 
-### Easy Launch
+### Executable (No Python Required!)
+1. Download `YouTube_Downloader.exe` from the `dist` folder
+2. **Double-click to run** - no installation needed!
+3. Paste a video URL or search YouTube
+4. Download with real-time progress tracking
+
+### Python Version (For Developers)
 Simply double-click `start_gui.bat` to launch the application!
 
 Or run:
@@ -69,20 +77,35 @@ python youtube_downloader_gui.py
 
 ### Basic Usage (YouTube)
 
-1. **Launch the GUI** (double-click `start_gui.bat`)
+1. **Launch the GUI** (double-click `YouTube_Downloader.exe` or `start_gui.bat`)
 2. **Paste a YouTube URL** or use the search feature
 3. **Click "Fetch Video Info"** to see video details
 4. **Choose Video or Audio Only**
 5. **Click "Download"** (choose folder when prompted)
-6. **Done!** The interface auto-resets for the next download
+6. **Watch real-time progress** - percentage, speed (MB/s), and ETA displayed
+7. **Done!** The interface auto-resets for the next download
 
 ### YouTube Search Feature
 
 1. **Type keywords** in the URL field
 2. **Click the 🔍 Search button**
-3. **Browse results** in the popup window
-4. **Click a video** to select it
-5. **Download normally**
+3. **Browse 50 results** in a two-panel window:
+   - **Left panel**: Video list with titles, channels, views, duration
+   - **Right panel**: Preview with thumbnail and details
+4. **Click any video** to see thumbnail preview
+5. **Click "▶ Play in Browser"** to watch the video
+6. **Click "✓ SELECT THIS VIDEO FOR DOWNLOAD"** to download
+7. **Download normally** with progress tracking
+
+### Video Preview Features
+
+When viewing search results or previewing videos:
+- **Thumbnail display** - see video image before downloading
+- **Video information** - channel, duration, views, URL
+- **Play in Browser** - watch video without downloading
+- **Quick select** - one-click selection for download
+
+Note: In-app video streaming is not available due to YouTube's bot detection. Use "Play in Browser" to watch full videos.
 
 ### Age-Restricted Videos (Cookie Setup)
 
@@ -187,6 +210,18 @@ if results['success']:
 2. Use the Cookie Setup Wizard
 3. Or manually export cookies.txt
 
+#### "Sign in to confirm you're not a bot"
+**Solution:** This is YouTube's bot detection
+- Video preview in-app is not available due to this restriction
+- Use **"▶ Play in Browser"** button to watch videos
+- Download still works normally with cookies
+
+#### Progress bar shows "Processing (merging video/audio)"
+**Normal behavior:** yt-dlp is combining video and audio streams
+- This happens when downloading best quality
+- Progress bar shows indeterminate mode during merge
+- Wait for completion
+
 #### "This content is not available in your location"
 **Solution:** Use a VPN
 - Install ProtonVPN (free tier available)
@@ -217,15 +252,36 @@ pip install --upgrade yt-dlp
 
 ```
 youtubedl/
-├── youtube_downloader_gui.py   # Main GUI application
-├── youtube_downloader.py       # Core downloader class
+├── youtube_downloader_gui.py   # Main GUI application (single file)
 ├── export_cookies.py          # Cookie export helper
 ├── proxy_list.txt            # Working proxy list
-├── cookies.txt               # Your exported cookies
+├── cookies.txt               # Your exported cookies (after setup)
 ├── requirements.txt          # Python dependencies
-├── README.md                 # This file
-├── TROUBLESHOOTING.md        # Detailed troubleshooting
+├── start_gui.bat            # Easy launcher for Windows
+├── build_executable.bat     # Build .exe file
+├── README.md                # This file
+├── TROUBLESHOOTING.md       # Detailed troubleshooting
+├── dist/                    # Compiled executable
+│   └── YouTube_Downloader.exe  # Standalone application
+└── downloads/               # Default download folder
 ```
+
+## 🏗️ Building Executable
+
+To build the standalone executable:
+
+```powershell
+# Install PyInstaller if needed
+pip install pyinstaller
+
+# Build executable
+python -m PyInstaller --onefile --windowed --name "YouTube_Downloader" --icon="Youtube-icon.ico" --add-data "proxy_list.txt;." youtube_downloader_gui.py
+
+# Or use the batch file
+build_executable.bat
+```
+
+The executable will be created in the `dist` folder.
 
 ## 📦 Output
 
@@ -254,8 +310,6 @@ This tool is for educational purposes only. Please respect:
 MIT License - Feel free to use and modify as needed.
 
 **Author:** Roberto Raimondo - IS Senior Systems Engineer II
-
-
 
 
 

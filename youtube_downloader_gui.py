@@ -7,10 +7,269 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
 import os
-from youtube_downloader import YouTubeDownloader
 import sys
 import webbrowser
 import shutil
+import yt_dlp
+from pathlib import Path
+
+
+class YouTubeDownloader:
+    """
+    A YouTube video downloader that handles age-restricted content.
+    Uses yt-dlp library for robust video downloading.
+    """
+    
+    def __init__(self, output_path='downloads'):
+        """
+        Initialize the downloader.
+        
+        Args:
+            output_path (str): Directory where videos will be saved
+        """
+        self.output_path = output_path
+        Path(output_path).mkdir(parents=True, exist_ok=True)
+    
+    def download_video(self, url, quality='best', format_type='mp4', use_cookies=True, proxy=None, progress_hook=None):
+        """
+        Download a YouTube video, including age-restricted content.
+        
+        Args:
+            url (str): YouTube video URL
+            quality (str): Video quality ('best', 'worst', or specific height like '720')
+            format_type (str): Output format ('mp4', 'mkv', 'webm', etc.)
+            use_cookies (bool): Whether to attempt using cookies
+            proxy (str): Proxy server URL (optional)
+            progress_hook (callable): Callback function for download progress
+        
+        Returns:
+            dict: Download information including success status and file path
+        """
+        try:
+            # Configure yt-dlp options
+            ydl_opts = {
+                'format': f'bestvideo[ext={format_type}]+bestaudio[ext=m4a]/best[ext={format_type}]/best',
+                'outtmpl': os.path.join(self.output_path, '%(title)s.%(ext)s'),
+                'nocheckcertificate': True,
+                'ignoreerrors': False,
+                'no_warnings': False,
+                'quiet': False,
+                'merge_output_format': format_type,
+                # Critical for age-restricted videos
+                'age_limit': None,  # No age limit
+            }
+            
+            # Add progress hook if provided
+            if progress_hook:
+                ydl_opts['progress_hooks'] = [progress_hook]
+            
+            # Add proxy if provided
+            if proxy:
+                ydl_opts['proxy'] = proxy
+            
+            # Try to add cookies if available and requested
+            if use_cookies:
+                cookies_file = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+                if os.path.exists(cookies_file):
+                    ydl_opts['cookiefile'] = cookies_file
+                    print("Using cookies.txt file for authentication")
+                else:
+                    # Try browser cookies but don't fail if it doesn't work
+                    try:
+                        ydl_opts['cookiesfrombrowser'] = ('chrome',)
+                    except:
+                        pass  # Continue without browser cookies
+            
+            # Adjust quality settings
+            if quality != 'best':
+                if quality == 'worst':
+                    ydl_opts['format'] = 'worst'
+                elif quality.isdigit():
+                    ydl_opts['format'] = f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]'
+            
+            # Download the video
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                print(f"Downloading video from: {url}")
+                info = ydl.extract_info(url, download=True)
+                
+                # Get the downloaded file path
+                filename = ydl.prepare_filename(info)
+                
+                return {
+                    'success': True,
+                    'title': info.get('title', 'Unknown'),
+                    'file_path': filename,
+                    'duration': info.get('duration', 0),
+                    'uploader': info.get('uploader', 'Unknown')
+                }
+                
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def download_audio_only(self, url, format_type='mp3', use_cookies=True, proxy=None, progress_hook=None):
+        """
+        Download only the audio from a YouTube video.
+        
+        Args:
+            url (str): YouTube video URL
+            format_type (str): Audio format ('mp3', 'wav', 'm4a', etc.)
+            use_cookies (bool): Whether to attempt using cookies
+            proxy (str): Proxy server URL (optional)
+            progress_hook (callable): Callback function for download progress
+        
+        Returns:
+            dict: Download information
+        """
+        try:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': os.path.join(self.output_path, '%(title)s.%(ext)s'),
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': format_type,
+                    'preferredquality': '192',
+                }],
+                'nocheckcertificate': True,
+                'age_limit': None,
+            }
+            
+            # Add progress hook if provided
+            if progress_hook:
+                ydl_opts['progress_hooks'] = [progress_hook]
+            
+            # Add proxy if provided
+            if proxy:
+                ydl_opts['proxy'] = proxy
+            
+            # Try to add cookies if available and requested
+            if use_cookies:
+                cookies_file = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+                if os.path.exists(cookies_file):
+                    ydl_opts['cookiefile'] = cookies_file
+                    print("Using cookies.txt file for authentication")
+                else:
+                    try:
+                        ydl_opts['cookiesfrombrowser'] = ('chrome',)
+                    except:
+                        pass
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                print(f"Downloading audio from: {url}")
+                info = ydl.extract_info(url, download=True)
+                
+                return {
+                    'success': True,
+                    'title': info.get('title', 'Unknown'),
+                    'duration': info.get('duration', 0)
+                }
+                
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def get_video_info(self, url, use_cookies=True, proxy=None):
+        """
+        Get information about a video without downloading it.
+        
+        Args:
+            url (str): YouTube video URL
+            use_cookies (bool): Whether to attempt using cookies
+            proxy (str): Proxy server URL (optional)
+        
+        Returns:
+            dict: Video information
+        """
+        try:
+            ydl_opts = {
+                'nocheckcertificate': True,
+                'age_limit': None,
+            }
+            
+            # Add proxy if provided
+            if proxy:
+                ydl_opts['proxy'] = proxy
+            
+            # Try to add cookies if available and requested
+            if use_cookies:
+                cookies_file = os.path.join(os.path.dirname(__file__), 'cookies.txt')
+                if os.path.exists(cookies_file):
+                    ydl_opts['cookiefile'] = cookies_file
+                    print("Using cookies.txt file for authentication")
+                else:
+                    try:
+                        ydl_opts['cookiesfrombrowser'] = ('chrome',)
+                    except:
+                        pass  # Continue without browser cookies
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                
+                return {
+                    'success': True,
+                    'title': info.get('title', 'Unknown'),
+                    'duration': info.get('duration', 0),
+                    'uploader': info.get('uploader', 'Unknown'),
+                    'views': info.get('view_count', 0),
+                    'description': info.get('description', ''),
+                    'age_restricted': info.get('age_limit', 0) > 0
+                }
+                
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def search_videos(self, query, max_results=10):
+        """
+        Search for YouTube videos.
+        
+        Args:
+            query (str): Search query
+            max_results (int): Maximum number of results
+        
+        Returns:
+            dict: Search results with success status and video list
+        """
+        try:
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': True,
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                search_url = f"ytsearch{max_results}:{query}"
+                result = ydl.extract_info(search_url, download=False)
+                
+                videos = []
+                for entry in result.get('entries', []):
+                    if entry:
+                        videos.append({
+                            'title': entry.get('title', 'Unknown'),
+                            'url': entry.get('url', ''),
+                            'duration': entry.get('duration', 0),
+                            'views': entry.get('view_count', 0),
+                            'channel': entry.get('uploader', 'Unknown'),
+                            'thumbnail': entry.get('thumbnail', '')
+                        })
+                
+                return {
+                    'success': True,
+                    'videos': videos
+                }
+        
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'videos': []
+            }
 
 
 class YouTubeDownloaderGUI:
@@ -142,6 +401,22 @@ class YouTubeDownloaderGUI:
             cursor="hand2"
         )
         self.cookie_wizard_btn.pack(side=tk.LEFT, expand=True, padx=2)
+        
+        # Upload cookie file button
+        self.upload_cookie_btn = tk.Button(
+            cookie_frame,
+            text="📂 Upload cookies.txt",
+            command=self.import_cookies_file,
+            font=("Arial", 10, "bold"),
+            bg="#2196F3",
+            fg="white",
+            relief=tk.RAISED,
+            bd=3,
+            padx=15,
+            pady=8,
+            cursor="hand2"
+        )
+        self.upload_cookie_btn.pack(side=tk.LEFT, expand=True, padx=2)
         
         # Proxy Settings Section
         proxy_frame = tk.LabelFrame(
@@ -481,10 +756,11 @@ class YouTubeDownloaderGUI:
     
     def get_proxy(self):
         """Get proxy URL if provided."""
-        proxy = self.proxy_entry.get()
-        if proxy and "proxy.example.com" not in proxy and "127.0.0.1:1080" not in proxy:
-            return proxy
-        return None
+        proxy = self.proxy_entry.get().strip()
+        # Return None if empty or contains placeholder text
+        if not proxy or "proxy.example.com" in proxy or "127.0.0.1:1080" in proxy or proxy == "":
+            return None
+        return proxy
     
     def search_videos(self):
         """Search for YouTube videos."""
@@ -514,17 +790,23 @@ class YouTubeDownloaderGUI:
             if not self.downloader:
                 self.downloader = YouTubeDownloader(output_path=self.download_path)
             
-            result = self.downloader.search_videos(query, max_results=10)
+            result = self.downloader.search_videos(query, max_results=50)
             
-            if result['success'] and result['videos']:
-                self.root.after(0, lambda: self.show_search_results(result['videos']))
-                self.root.after(0, lambda: self.progress_bar.stop())
-                self.root.after(0, lambda: self.progress_label.config(text="Search complete - Select a video", fg="green"))
+            if result['success']:
+                if result['videos']:
+                    self.root.after(0, lambda: self.show_search_results(result['videos']))
+                    self.root.after(0, lambda: self.progress_bar.stop())
+                    self.root.after(0, lambda: self.progress_label.config(text="Search complete - Select a video", fg="green"))
+                else:
+                    # No results found
+                    self.root.after(0, lambda: self.progress_bar.stop())
+                    self.root.after(0, lambda: self.progress_label.config(text="No results found", fg="orange"))
+                    self.root.after(0, lambda: messagebox.showinfo("No Results", "No videos found for your search query. Try different keywords."))
             else:
-                error_msg = result.get('error', 'No videos found')
+                error_msg = result.get('error', 'Search failed')
                 self.root.after(0, lambda: self.progress_bar.stop())
                 self.root.after(0, lambda: self.progress_label.config(text="Search failed", fg="red"))
-                self.root.after(0, lambda: messagebox.showerror("Search Failed", f"Could not find videos: {error_msg}"))
+                self.root.after(0, lambda: messagebox.showerror("Search Failed", f"Could not search videos: {error_msg}"))
         
         except Exception as e:
             self.root.after(0, lambda: self.progress_bar.stop())
@@ -532,15 +814,15 @@ class YouTubeDownloaderGUI:
             self.root.after(0, lambda: messagebox.showerror("Error", f"Search error: {str(e)}"))
     
     def show_search_results(self, videos):
-        """Show search results in a popup window."""
+        """Show search results in a popup window with preview panel."""
         results_window = tk.Toplevel(self.root)
         results_window.title("Search Results")
-        results_window.geometry("800x500")
+        results_window.state('zoomed')  # Open maximized
         
         # Title
         title = tk.Label(
             results_window,
-            text="🔍 Search Results - Click on a video to select",
+            text="🔍 Search Results - Click on a video to preview or select",
             font=("Arial", 12, "bold"),
             bg="#2196F3",
             fg="white",
@@ -548,9 +830,17 @@ class YouTubeDownloaderGUI:
         )
         title.pack(fill=tk.X)
         
-        # Scrollable frame
-        canvas = tk.Canvas(results_window)
-        scrollbar = tk.Scrollbar(results_window, orient="vertical", command=canvas.yview)
+        # Main container with two panels
+        main_container = tk.Frame(results_window)
+        main_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Left panel - Search results list
+        left_panel = tk.Frame(main_container, width=600)
+        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Scrollable frame for results
+        canvas = tk.Canvas(left_panel)
+        scrollbar = tk.Scrollbar(left_panel, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas)
         
         scrollable_frame.bind(
@@ -559,20 +849,262 @@ class YouTubeDownloaderGUI:
         )
         
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        # Ensure 'canvas' is defined before configuring yscrollcommand
         canvas.configure(yscrollcommand=scrollbar.set)
         
+        # Make scrollable_frame accessible in this scope
+        # This ensures scrollable_frame is defined before use below
+
+        # Enable mouse wheel scrolling for left panel
+        def _on_mousewheel_left(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel_left)
+        
+        # Right panel - Video preview
+        right_panel = tk.Frame(main_container, width=600, bg="#f5f5f5", relief=tk.SUNKEN, bd=2)
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        right_panel.pack_propagate(False)
+        
+        # Preview header
+        preview_header = tk.Label(
+            right_panel,
+            text="📺 Video Preview",
+            font=("Arial", 14, "bold"),
+            bg="#FF0000",
+            fg="white",
+            pady=10
+        )
+        preview_header.pack(fill=tk.X)
+        
+        # Preview content area (scrollable)
+        preview_canvas = tk.Canvas(right_panel, bg="#f5f5f5")
+        preview_scrollbar = tk.Scrollbar(right_panel, orient="vertical", command=preview_canvas.yview)
+        preview_content = tk.Frame(preview_canvas, bg="#f5f5f5")
+        
+        preview_content.bind(
+            "<Configure>",
+            lambda e: preview_canvas.configure(scrollregion=preview_canvas.bbox("all"))
+        )
+        
+        preview_canvas.create_window((0, 0), window=preview_content, anchor="nw")
+        preview_canvas.configure(yscrollcommand=preview_scrollbar.set)
+        
+        # Enable mouse wheel scrolling for right panel
+        def _on_mousewheel_right(event):
+            preview_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        preview_canvas.bind("<MouseWheel>", _on_mousewheel_right)
+        
+        # Default preview message
+        default_msg = tk.Label(
+            preview_content,
+            text="👈 Click on a video from the list\nto see detailed preview here",
+            font=("Arial", 12),
+            bg="#f5f5f5",
+            fg="gray",
+            pady=100
+        )
+        default_msg.pack(expand=True)
+        
+        preview_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        preview_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Function to show video preview
+        def show_preview(video):
+            print(f"DEBUG: show_preview called for: {video.get('title', 'Unknown')}")
+            
+            # Stop any existing VLC player before clearing
+            if hasattr(preview_content, 'vlc_player'):
+                try:
+                    preview_content.vlc_player.stop()
+                    preview_content.vlc_player.release()
+                    print("DEBUG: Stopped previous VLC player")
+                except:
+                    pass
+                delattr(preview_content, 'vlc_player')
+            if hasattr(preview_content, 'vlc_instance'):
+                try:
+                    preview_content.vlc_instance.release()
+                except:
+                    pass
+                delattr(preview_content, 'vlc_instance')
+            
+            # Clear preview content
+            for widget in preview_content.winfo_children():
+                widget.destroy()
+            
+            # Video title at top
+            title_label = tk.Label(
+                preview_content,
+                text=video.get('title', 'Unknown Title'),
+                font=("Arial", 12, "bold"),
+                wraplength=550,
+                justify=tk.LEFT,
+                bg="#f5f5f5",
+                padx=10,
+                pady=10
+            )
+            title_label.pack(anchor="w", fill=tk.X)
+            
+            # Embedded video player frame
+            player_frame = tk.Frame(preview_content, bg="black", width=560, height=315)
+            player_frame.pack(pady=10)
+            player_frame.pack_propagate(False)
+            player_frame.update()
+            
+            # Initialize VLC variables
+            vlc_player = None
+            vlc_instance = None
+            temp_video_file = None
+            
+            # Show thumbnail as preview (VLC streaming doesn't work due to YouTube bot detection)
+            print("DEBUG: Showing thumbnail preview")
+            self._show_thumbnail_in_frame(video, player_frame)
+            
+            # Add status label
+            status_label = tk.Label(
+                preview_content,
+                text="💡 To watch the full video, click 'Play in Browser' or download it",
+                font=("Arial", 9, "italic"),
+                bg="#f5f5f5",
+                fg="#FF6600",
+                pady=5
+            )
+            status_label.pack()
+            
+            # Control buttons frame (ALWAYS show)
+            controls_frame = tk.Frame(preview_content, bg="#f5f5f5")
+            controls_frame.pack(fill=tk.X, pady=10)
+            
+            # Play in Browser button (main action since streaming doesn't work)
+            def play_in_browser():
+                import webbrowser
+                webbrowser.open(video['url'])
+                print("DEBUG: Opened video in browser")
+            
+            play_browser_btn = tk.Button(
+                controls_frame,
+                text="▶ Play in Browser",
+                command=play_in_browser,
+                font=("Arial", 11, "bold"),
+                bg="#FF0000",
+                fg="white",
+                cursor="hand2",
+                padx=20,
+                pady=8
+            )
+            play_browser_btn.pack(side=tk.LEFT, padx=5)
+            
+            # Close button
+            def close_preview():
+                if vlc_player:
+                    vlc_player.stop()
+                    vlc_player.release()
+                if vlc_instance:
+                    vlc_instance.release()
+                # Clean up temp file if exists
+                if temp_video_file and os.path.exists(temp_video_file):
+                    try:
+                        os.remove(temp_video_file)
+                    except:
+                        pass
+                results_window.destroy()
+            
+            close_btn = tk.Button(
+                controls_frame,
+                text="✕ Close",
+                command=close_preview,
+                font=("Arial", 10, "bold"),
+                bg="#555555",
+                fg="white",
+                cursor="hand2",
+                padx=15,
+                pady=5
+            )
+            close_btn.pack(side=tk.RIGHT, padx=5)
+            
+            # Video information below controls
+            info_section = tk.Frame(preview_content, bg="#f5f5f5")
+            info_section.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            # Channel
+            channel_label = tk.Label(
+                info_section,
+                text=f"📺 Channel: {video.get('channel', 'Unknown')}",
+                font=("Arial", 10),
+                bg="#f5f5f5",
+                fg="#333",
+                anchor="w"
+            )
+            channel_label.pack(anchor="w", pady=2)
+            
+            # Duration
+            duration = int(video.get('duration', 0)) if video.get('duration') else 0
+            duration_str = f"{duration//60}:{duration%60:02d}" if duration > 0 else "N/A"
+            duration_label = tk.Label(
+                info_section,
+                text=f"⏱️ Duration: {duration_str}",
+                font=("Arial", 10),
+                bg="#f5f5f5",
+                fg="#333",
+                anchor="w"
+            )
+            duration_label.pack(anchor="w", pady=2)
+            
+            # Views
+            views = int(video.get('views', 0)) if video.get('views') else 0
+            views_str = f"{views:,}" if views > 0 else "N/A"
+            views_label = tk.Label(
+                info_section,
+                text=f"👁️ Views: {views_str}",
+                font=("Arial", 10),
+                bg="#f5f5f5",
+                fg="#333",
+                anchor="w"
+            )
+            views_label.pack(anchor="w", pady=2)
+            
+            # Video URL
+            tk.Label(
+                info_section,
+                text="🔗 URL:",
+                font=("Arial", 10, "bold"),
+                bg="#f5f5f5",
+                anchor="w"
+            ).pack(anchor="w", pady=(10, 2))
+            
+            url_text = tk.Text(info_section, height=2, wrap=tk.WORD, font=("Courier", 8))
+            url_text.insert(1.0, video['url'])
+            url_text.config(state=tk.DISABLED, bg="white")
+            url_text.pack(fill=tk.X, pady=2)
+            
+            # Select button
+            select_btn = tk.Button(
+                info_section,
+                text="✓ SELECT THIS VIDEO FOR DOWNLOAD",
+                command=lambda: self.select_video_from_search(video['url'], results_window),
+                font=("Arial", 12, "bold"),
+                bg="#4CAF50",
+                fg="white",
+                cursor="hand2",
+                padx=30,
+                pady=12
+            )
+            select_btn.pack(pady=15)
+
         # Add video entries
         for i, video in enumerate(videos):
-            video_frame = tk.Frame(scrollable_frame, relief=tk.RAISED, bd=2, padx=10, pady=10)
+            video_frame = tk.Frame(scrollable_frame, relief=tk.RAISED, bd=2, padx=10, pady=10, cursor="hand2", bg="white")
             video_frame.pack(fill=tk.X, padx=10, pady=5)
             
             # Video info
             title_label = tk.Label(
                 video_frame,
-                text=f"🎬 {video['title']}",
+                text=f"🎬 {video.get('title', 'Unknown Title')}",
                 font=("Arial", 11, "bold"),
-                wraplength=700,
-                justify=tk.LEFT
+                wraplength=500,
+                justify=tk.LEFT,
+                cursor="hand2",
+                bg="white"
             )
             title_label.pack(anchor="w")
             
@@ -584,31 +1116,270 @@ class YouTubeDownloaderGUI:
             
             info_label = tk.Label(
                 video_frame,
-                text=f"📺 {video['channel']} | 👁️ {views_str} views | ⏱️ {duration_str}",
+                text=f"📺 {video.get('channel', 'Unknown')} | 👁️ {views_str} views | ⏱️ {duration_str}",
                 font=("Arial", 9),
-                fg="gray"
+                fg="gray",
+                cursor="hand2",
+                bg="white"
             )
             info_label.pack(anchor="w")
             
+            # Button frame for actions
+            btn_frame = tk.Frame(video_frame, bg="white")
+            btn_frame.pack(anchor="e", pady=(5, 0))
+            
+            # Preview button
+            preview_btn = tk.Button(
+                btn_frame,
+                text="👁️ Preview",
+                command=lambda v=video: show_preview(v),
+                font=("Arial", 9, "bold"),
+                bg="#2196F3",
+                fg="white",
+                cursor="hand2",
+                padx=10,
+                pady=3
+            )
+            preview_btn.pack(side=tk.LEFT, padx=(0, 5))
+            
             # Select button
             select_btn = tk.Button(
-                video_frame,
-                text="✓ Select This Video",
+                btn_frame,
+                text="✓ Select",
                 command=lambda url=video['url'], win=results_window: self.select_video_from_search(url, win),
                 font=("Arial", 9, "bold"),
                 bg="#4CAF50",
                 fg="white",
                 cursor="hand2",
-                padx=15,
-                pady=5
+                padx=10,
+                pady=3
             )
-            select_btn.pack(anchor="e", pady=(5, 0))
+            select_btn.pack(side=tk.LEFT)
+            
+            # Bind click events to all widgets in the frame (except buttons)
+            def bind_click(widget, vid=video):
+                if not isinstance(widget, tk.Button):
+                    widget.bind("<Button-1>", lambda e: show_preview(vid))
+                for child in widget.winfo_children():
+                    bind_click(child, vid)
+            
+            bind_click(video_frame, video)
         
         canvas.pack(side="left", fill="both", expand=True)
+        scrollbar = tk.Scrollbar(left_panel, orient="vertical", command=canvas.yview)
         scrollbar.pack(side="right", fill="y")
+        canvas.configure(yscrollcommand=scrollbar.set)
+    
+    def _show_thumbnail_in_frame(self, video, player_frame):
+        """Show thumbnail in the player frame when VLC fails."""
+        if video.get('thumbnail'):
+            try:
+                import urllib.request
+                from PIL import Image, ImageTk
+                import io
+                
+                print(f"DEBUG: Loading thumbnail from: {video['thumbnail']}")
+                # Download thumbnail
+                with urllib.request.urlopen(video['thumbnail'], timeout=5) as url:
+                    image_data = url.read()
+                
+                # Open and resize image
+                image = Image.open(io.BytesIO(image_data))
+                # Resize to fit player frame (560x315)
+                image.thumbnail((560, 315), Image.Resampling.LANCZOS)
+                
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(image)
+                
+                # Display thumbnail
+                thumbnail_label = tk.Label(player_frame, image=photo, bg="black")
+                thumbnail_label.image = photo  # Keep a reference!
+                thumbnail_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+                
+                print("DEBUG: Thumbnail loaded successfully")
+            except Exception as e:
+                print(f"DEBUG: Error loading thumbnail: {e}")
+                # Show error message in frame
+                error_label = tk.Label(
+                    player_frame,
+                    text="⚠️ Preview not available\nClick Play to open in browser",
+                    font=("Arial", 12),
+                    bg="black",
+                    fg="white"
+                )
+                error_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        else:
+            # No thumbnail available
+            no_thumb_label = tk.Label(
+                player_frame,
+                text="📹 No preview available\nClick Play to open in browser",
+                font=("Arial", 12),
+                bg="black",
+                fg="white"
+            )
+            no_thumb_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+    
+    def _show_thumbnail_preview(self, video, player_frame, preview_content, results_window):
+        """Show thumbnail with play button as fallback."""
+        if video.get('thumbnail'):
+            try:
+                import urllib.request
+                from PIL import Image, ImageTk
+                import io
+                
+                print(f"DEBUG: Downloading thumbnail from: {video['thumbnail']}")
+                # Download thumbnail
+                with urllib.request.urlopen(video['thumbnail']) as url:
+                    image_data = url.read()
+                
+                # Open and resize image
+                image = Image.open(io.BytesIO(image_data))
+                # Resize to fit player frame
+                ratio = 560 / image.width
+                new_height = int(image.height * ratio)
+                image = image.resize((560, new_height), Image.Resampling.LANCZOS)
+                
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(image)
+                
+                # Display thumbnail
+                thumbnail_label = tk.Label(player_frame, image=photo, bg="black")
+                thumbnail_label.image = photo  # Keep a reference!
+                thumbnail_label.pack()
+                
+                # Play button overlay - opens in browser
+                play_overlay = tk.Label(
+                    player_frame,
+                    text="▶",
+                    font=("Arial", 64, "bold"),
+                    bg="black",
+                    fg="white",
+                    cursor="hand2"
+                )
+                play_overlay.place(relx=0.5, rely=0.5, anchor="center")
+                play_overlay.bind("<Button-1>", lambda e: self.open_video_in_browser(video['url']))
+                thumbnail_label.bind("<Button-1>", lambda e: self.open_video_in_browser(video['url']))
+                thumbnail_label.config(cursor="hand2")
+                
+                print("DEBUG: Thumbnail displayed with play button")
+            except Exception as e:
+                print(f"DEBUG: Thumbnail error: {e}")
+                tk.Label(
+                    player_frame,
+                    text="▶ Click to Watch Video",
+                    font=("Arial", 14, "bold"),
+                    bg="black",
+                    fg="white",
+                    cursor="hand2"
+                ).pack(expand=True)
+                player_frame.bind("<Button-1>", lambda e: self.open_video_in_browser(video['url']))
+        else:
+            tk.Label(
+                player_frame,
+                text="▶ Click to Watch Video",
+                font=("Arial", 14, "bold"),
+                bg="black",
+                fg="white",
+                cursor="hand2"
+            ).pack(expand=True)
+            player_frame.bind("<Button-1>", lambda e: self.open_video_in_browser(video['url']))
+            
+            # Watch in browser button
+            watch_btn = tk.Button(
+                preview_content,
+                text="▶ Watch in Browser",
+                command=lambda: self.open_video_in_browser(video['url']),
+                font=("Arial", 11, "bold"),
+                bg="#FF0000",
+                fg="white",
+                cursor="hand2",
+                padx=20,
+                pady=8
+            )
+            watch_btn.pack(pady=10)
+            
+            # Video URL
+            url_frame = tk.Frame(preview_content, bg="#f5f5f5", padx=10)
+            url_frame.pack(anchor="w", fill=tk.X, pady=5)
+            
+            tk.Label(url_frame, text="🔗 URL:", font=("Arial", 10, "bold"), bg="#f5f5f5").pack(anchor="w")
+            url_text = tk.Text(url_frame, height=2, wrap=tk.WORD, font=("Courier", 8))
+            url_text.insert(1.0, video['url'])
+            url_text.config(state=tk.DISABLED, bg="white")
+            url_text.pack(fill=tk.X, pady=2)
+            
+            # Channel
+            channel_label = tk.Label(
+                preview_content,
+                text=f"📺 Channel: {video.get('channel', 'Unknown')}",
+                font=("Arial", 10),
+                bg="#f5f5f5",
+                fg="#333",
+                padx=10
+            )
+            channel_label.pack(anchor="w", pady=2)
+            
+            # Duration
+            duration = int(video.get('duration', 0)) if video.get('duration') else 0
+            duration_str = f"{duration//60}:{duration%60:02d}" if duration > 0 else "N/A"
+            duration_label = tk.Label(
+                preview_content,
+                text=f"⏱️ Duration: {duration_str}",
+                font=("Arial", 10),
+                bg="#f5f5f5",
+                fg="#333",
+                padx=10
+            )
+            duration_label.pack(anchor="w", pady=2)
+            
+            # Views
+            views = int(video.get('views', 0)) if video.get('views') else 0
+            views_str = f"{views:,}" if views > 0 else "N/A"
+            views_label = tk.Label(
+                preview_content,
+                text=f"👁️ Views: {views_str}",
+                font=("Arial", 10),
+                bg="#f5f5f5",
+                fg="#333",
+                padx=10
+            )
+            views_label.pack(anchor="w", pady=2)
+            
+            # Large select button
+            select_btn = tk.Button(
+                preview_content,
+                text="✓ SELECT THIS VIDEO",
+                command=lambda: self.select_video_from_search(video['url'], results_window),
+                font=("Arial", 14, "bold"),
+                bg="#4CAF50",
+                fg="white",
+                cursor="hand2",
+                padx=30,
+                pady=15
+            )
+            select_btn.pack(pady=20)
     
     def select_video_from_search(self, url, window):
         """Select a video from search results."""
+        # Stop VLC player if it's running
+        # Find the preview_content widget in the window
+        for widget in window.winfo_children():
+            for child in widget.winfo_children():
+                for subchild in child.winfo_children():
+                    if hasattr(subchild, 'winfo_children'):
+                        for content in subchild.winfo_children():
+                            if hasattr(content, 'vlc_player'):
+                                try:
+                                    content.vlc_player.stop()
+                                    content.vlc_player.release()
+                                except:
+                                    pass
+                            if hasattr(content, 'vlc_instance'):
+                                try:
+                                    content.vlc_instance.release()
+                                except:
+                                    pass
+        
         # Set URL in entry
         self.url_entry.delete(0, tk.END)
         self.url_entry.insert(0, url)
@@ -620,6 +1391,177 @@ class YouTubeDownloaderGUI:
         # Automatically fetch video info
         messagebox.showinfo("Video Selected", "Video selected! Fetching information...")
         self.fetch_video_info()
+    
+    def open_video_in_browser(self, url):
+        """Open video in default web browser."""
+        import webbrowser
+        webbrowser.open(url)
+    
+    def preview_video_embedded(self, video):
+        """Open embedded video preview in a new window using VLC."""
+        preview_win = tk.Toplevel(self.root)
+        preview_win.title(f"Preview: {video.get('title', 'Unknown Title')}")
+        preview_win.geometry("900x600")
+        preview_win.configure(bg="#000000")
+        
+        # Header with video title
+        header = tk.Frame(preview_win, bg="#FF0000")
+        header.pack(fill=tk.X)
+        
+        tk.Label(
+            header,
+            text=video.get('title', 'Unknown Title'),
+            font=("Arial", 12, "bold"),
+            bg="#FF0000",
+            fg="white",
+            wraplength=850,
+            pady=10,
+            padx=10
+        ).pack()
+        
+        # Video player frame
+        player_frame = tk.Frame(preview_win, bg="black")
+        player_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Try to use VLC player
+        try:
+            import vlc
+            
+            # Create VLC instance
+            instance = vlc.Instance()
+            player = instance.media_player_new()
+            
+            # Get video URL via yt-dlp
+            import yt_dlp
+            ydl_opts = {'format': 'best', 'quiet': True}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video['url'], download=False)
+                stream_url = info['url']
+            
+            # Create media
+            media = instance.media_new(stream_url)
+            player.set_media(media)
+            
+            # Embed VLC player in tkinter
+            if tk.sys.platform.startswith('win'):
+                player.set_hwnd(player_frame.winfo_id())
+            else:
+                player.set_xwindow(player_frame.winfo_id())
+            
+            # Play
+            player.play()
+            
+            # Control buttons
+            controls = tk.Frame(preview_win, bg="#222222")
+            controls.pack(fill=tk.X)
+            
+            tk.Button(
+                controls,
+                text="⏸ Pause/Play",
+                command=lambda: player.pause(),
+                font=("Arial", 10),
+                bg="#555555",
+                fg="white",
+                padx=10,
+                pady=5
+            ).pack(side=tk.LEFT, padx=5, pady=5)
+            
+            tk.Button(
+                controls,
+                text="⏹ Stop",
+                command=lambda: player.stop(),
+                font=("Arial", 10),
+                bg="#555555",
+                fg="white",
+                padx=10,
+                pady=5
+            ).pack(side=tk.LEFT, padx=5, pady=5)
+            
+            tk.Button(
+                controls,
+                text="Close",
+                command=lambda: [player.stop(), preview_win.destroy()],
+                font=("Arial", 10),
+                bg="#555555",
+                fg="white",
+                padx=10,
+                pady=5
+            ).pack(side=tk.RIGHT, padx=5, pady=5)
+            
+            # Cleanup on close
+            preview_win.protocol("WM_DELETE_WINDOW", lambda: [player.stop(), preview_win.destroy()])
+            
+        except ImportError:
+            # VLC not installed - show instructions
+            msg_frame = tk.Frame(player_frame, bg="black")
+            msg_frame.pack(expand=True)
+            
+            tk.Label(
+                msg_frame,
+                text="VLC Player Required for In-App Preview",
+                font=("Arial", 16, "bold"),
+                bg="black",
+                fg="white"
+            ).pack(pady=20)
+            
+            tk.Label(
+                msg_frame,
+                text="To watch videos inside the app, please install:\n\n"
+                     "1. VLC Media Player from videolan.org\n"
+                     "2. Python VLC package: pip install python-vlc\n\n"
+                     "Or click below to watch in browser:",
+                font=("Arial", 11),
+                bg="black",
+                fg="white",
+                justify=tk.CENTER
+            ).pack(pady=10)
+            
+            tk.Button(
+                msg_frame,
+                text="▶ Watch in Browser",
+                command=lambda: [self.open_video_in_browser(video['url']), preview_win.destroy()],
+                font=("Arial", 12, "bold"),
+                bg="#FF0000",
+                fg="white",
+                padx=30,
+                pady=10
+            ).pack(pady=20)
+            
+            tk.Button(
+                msg_frame,
+                text="Close",
+                command=preview_win.destroy,
+                font=("Arial", 10),
+                bg="#555555",
+                fg="white",
+                padx=15,
+                pady=5
+            ).pack(pady=5)
+            
+        except Exception as e:
+            # Error occurred - show message
+            msg_frame = tk.Frame(player_frame, bg="black")
+            msg_frame.pack(expand=True)
+            
+            tk.Label(
+                msg_frame,
+                text=f"Unable to load video player\n\nError: {str(e)}",
+                font=("Arial", 12),
+                bg="black",
+                fg="white",
+                justify=tk.CENTER
+            ).pack(pady=20)
+            
+            tk.Button(
+                msg_frame,
+                text="▶ Watch in Browser",
+                command=lambda: [self.open_video_in_browser(video['url']), preview_win.destroy()],
+                font=("Arial", 12, "bold"),
+                bg="#FF0000",
+                fg="white",
+                padx=30,
+                pady=10
+            ).pack(pady=20)
     
     def restore_placeholder(self, event):
         """Restore placeholder if empty."""
@@ -1061,7 +2003,7 @@ Before using, test if proxy works:
         tk.Button(
             btn_frame,
             text="🔗 Free Proxy List",
-            command=lambda: open_proxy_site("https://www.proxy-list.download/HTTPS"),
+            command=lambda: open_proxy_site("https://proxy5.net/free-proxy"),
             font=("Arial", 9, "bold"),
             bg="#4CAF50",
             fg="white",
@@ -1250,8 +2192,10 @@ Before using, test if proxy works:
             bd=4
         )
         
-        # Update progress label
+        # Update progress label and reset progress bar
         self.progress_label.config(text="Ready to download another video", fg="green")
+        self.progress_bar.stop()
+        self.progress_bar.config(mode='indeterminate', value=0)
     
     def smart_button_action(self):
         """Smart button that switches between fetch and download."""
@@ -1297,16 +2241,27 @@ Before using, test if proxy works:
                     info = self.downloader.get_video_info(url, use_cookies=True, proxy=proxy)
             
             if info['success']:
-                # Format info text
+                # Format info text safely
+                title = info.get('title', 'Unknown')
+                uploader = info.get('uploader', 'Unknown')
+                duration = info.get('duration', 0)
+                duration_sec = duration if duration else 0
+                duration_text = f"{duration_sec} seconds ({duration_sec//60} min {duration_sec%60} sec)" if duration_sec > 0 else "N/A"
+                views = info.get('views', None)
+                views_text = f"{views:,}" if views is not None else "N/A"
+                age_restricted = info.get('age_restricted', False)
+                description = info.get('description', 'N/A')
+                description_preview = description[:200] if description and description != 'N/A' else 'N/A'
+                
                 info_text = f"""
-Title: {info['title']}
-Uploader: {info['uploader']}
-Duration: {info['duration']} seconds ({info['duration']//60} min {info['duration']%60} sec)
-Views: {info.get('views', 'N/A'):,}
-Age Restricted: {'Yes ⚠️' if info.get('age_restricted', False) else 'No ✓'}
+Title: {title}
+Uploader: {uploader}
+Duration: {duration_text}
+Views: {views_text}
+Age Restricted: {'Yes ⚠️' if age_restricted else 'No ✓'}
 
 Description:
-{info.get('description', 'N/A')[:200]}...
+{description_preview}...
                 """.strip()
                 
                 # Update GUI in main thread
@@ -1332,6 +2287,11 @@ Description:
                 self.root.after(0, lambda: self.progress_label.config(text="❌ Failed to fetch info", fg="red"))
                 self.root.after(0, lambda: self.progress_bar.stop())
                 
+                # Re-enable button in fetch mode
+                def reset_button():
+                    self.action_btn.config(state=tk.NORMAL)
+                self.root.after(0, reset_button)
+                
                 # Check if it's a cookie-related error
                 if "age" in info['error'].lower() or "restricted" in info['error'].lower():
                     error_with_help = (
@@ -1351,6 +2311,8 @@ Description:
             self.root.after(0, lambda: self.update_info_text(error_msg))
             self.root.after(0, lambda: self.progress_label.config(text="❌ Failed to fetch info", fg="red"))
             self.root.after(0, lambda: self.progress_bar.stop())
+            # Re-enable button
+            self.root.after(0, lambda: self.action_btn.config(state=tk.NORMAL))
             self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
     
     def start_download(self):
@@ -1416,10 +2378,52 @@ Description:
             # Get proxy if provided
             proxy = self.get_proxy()
             
+            # Define progress hook
+            def progress_hook(d):
+                if d['status'] == 'downloading':
+                    # Get download percentage
+                    if 'total_bytes' in d:
+                        downloaded = d.get('downloaded_bytes', 0)
+                        total = d['total_bytes']
+                        percent = (downloaded / total) * 100
+                        speed = d.get('speed', 0)
+                        eta = d.get('eta', 0)
+                        
+                        # Format speed
+                        if speed:
+                            speed_mb = speed / (1024 * 1024)
+                            speed_str = f"{speed_mb:.2f} MB/s"
+                        else:
+                            speed_str = "N/A"
+                        
+                        # Update GUI
+                        status_text = f"⏬ Downloading: {percent:.1f}% | Speed: {speed_str} | ETA: {eta}s"
+                        self.root.after(0, lambda: self.progress_label.config(text=status_text, fg="blue"))
+                        self.root.after(0, lambda: self.progress_bar.stop())
+                        self.root.after(0, lambda: self.progress_bar.config(mode='determinate', value=percent))
+                    elif 'total_bytes_estimate' in d:
+                        downloaded = d.get('downloaded_bytes', 0)
+                        total = d['total_bytes_estimate']
+                        percent = (downloaded / total) * 100
+                        status_text = f"⏬ Downloading: {percent:.1f}% (estimated)"
+                        self.root.after(0, lambda: self.progress_label.config(text=status_text, fg="blue"))
+                        self.root.after(0, lambda: self.progress_bar.stop())
+                        self.root.after(0, lambda: self.progress_bar.config(mode='determinate', value=percent))
+                    else:
+                        # No total bytes available, show indeterminate progress
+                        downloaded = d.get('downloaded_bytes', 0)
+                        downloaded_mb = downloaded / (1024 * 1024)
+                        status_text = f"⏬ Downloading: {downloaded_mb:.1f} MB..."
+                        self.root.after(0, lambda: self.progress_label.config(text=status_text, fg="blue"))
+                elif d['status'] == 'finished':
+                    self.root.after(0, lambda: self.progress_label.config(text="🔄 Processing (merging video/audio)...", fg="blue"))
+                    self.root.after(0, lambda: self.progress_bar.config(mode='indeterminate'))
+                    self.root.after(0, lambda: self.progress_bar.start(10))
+            
             if download_type == "video":
-                result = self.downloader.download_video(url, quality=quality, use_cookies=use_cookies, proxy=proxy)
+                result = self.downloader.download_video(url, quality=quality, use_cookies=use_cookies, proxy=proxy, progress_hook=progress_hook)
             else:
-                result = self.downloader.download_audio_only(url, use_cookies=use_cookies, proxy=proxy)
+                result = self.downloader.download_audio_only(url, use_cookies=use_cookies, proxy=proxy, progress_hook=progress_hook)
             
             if result['success']:
                 success_msg = f"✅ Download complete!\n\n"
@@ -1436,6 +2440,8 @@ Description:
             else:
                 error_msg = result['error']
                 self.root.after(0, lambda: self.progress_label.config(text="❌ Download failed", fg="red"))
+                self.root.after(0, lambda: self.progress_bar.stop())
+                self.root.after(0, lambda: self.progress_bar.config(mode='indeterminate', value=0))
                 
                 # Check if it's a cookie-related error
                 if ("age" in error_msg.lower() or "restricted" in error_msg.lower() or 
@@ -1456,6 +2462,8 @@ Description:
         except Exception as e:
             error_msg = f"Error during download:\n{str(e)}"
             self.root.after(0, lambda: self.progress_label.config(text="❌ Download failed", fg="red"))
+            self.root.after(0, lambda: self.progress_bar.stop())
+            self.root.after(0, lambda: self.progress_bar.config(mode='indeterminate', value=0))
             self.root.after(0, lambda: messagebox.showerror("Error", error_msg))
         
         finally:
