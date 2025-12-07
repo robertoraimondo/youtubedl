@@ -1,8 +1,10 @@
 # YouTube Video Downloader with GUI
 
 A powerful Python-based video downloader with a beautiful GUI that supports YouTube, Mediaset, and 1000+ other video platforms. Features include YouTube search with thumbnail preview, real-time download progress, age-restricted video support, proxy settings, and more.
-
-**Author:** Roberto Raimondo - IS Senior Systems Engineer II
+<img width="1919" height="1027" alt="Immagine 2025-12-06 223534" src="https://github.com/user-attachments/assets/fea1a57d-9ab0-4018-9a30-347c2bc92c62" />
+<img width="1912" height="1026" alt="Immagine 2025-12-06 223645" src="https://github.com/user-attachments/assets/f1f00eda-ded7-45f5-a2aa-734b72d29a97" />
+<img width="1912" height="1030" alt="Immagine 2025-12-06 223728" src="https://github.com/user-attachments/assets/766437ed-3185-4703-a206-4b8ba8c15d05" />
+<img width="1914" height="1026" alt="Immagine 2025-12-06 223753" src="https://github.com/user-attachments/assets/e220b773-71d2-44aa-9a81-ccef69f49163" />
 
 ## ✨ Features
 
@@ -310,6 +312,7 @@ This tool is for educational purposes only. Please respect:
 MIT License - Feel free to use and modify as needed.
 
 **Author:** Roberto Raimondo - IS Senior Systems Engineer II
+
 
 
 
